@@ -5,11 +5,12 @@
 #include <QList>
 #include <QMap>
 #include "mainwindow.h"
-
+#include "data_struct.h"
+#include "data_persist.h"
 // ============================================================
 //  MainController —— 连接层
 //  职责：
-//    1. connect 所有按钮信号到槽函数
+//    1. connect MainWindow 的业务信号到控制器槽函数
 //    2. 管理临时数据（购物车、订单、销售统计）
 //    3. 收钱流程 → 同步到销售统计表
 //
@@ -30,20 +31,19 @@ public:
 
 private slots:
     // ---- 收银台 ----
-    void onSearchByCode();
-    void onSearchProduct();
-    void onAddToCart();
-    void onCashierProductRightClick(const QPoint &pos);  // 右键 → 加入购物车
-    void onRemoveFromCart(const QPoint &pos);            // 右键移出购物车
-    void onCheckout();                                   // ★ 收钱 → 同步销售表
+    void onSearchByCode(const QString &code);
+    void onSearchProduct(const QString &keyword);
+    void onAddToCart(const QString &code, int qty);
+    void onRemoveFromCart(int row);
+    void onCheckout(double paid);                        // ★ 收钱 → 同步销售表
 
     // ---- 商品管理 ----
-    void onSearchProductById();
-    void onSearchProductByName();
-    void onSearchProductByCategory();
+    void onSearchProductById(const QString &id);
+    void onSearchProductByName(const QString &name);
+    void onSearchProductByCategory(const QString &category);
 
     // ---- 权限 ----
-    void onRoleChanged(int index);
+    void onRoleChanged(bool adminMode);
 
 private:
     void connectSignals();
@@ -62,6 +62,7 @@ private:
     QList<CartItem>    m_cartItems;      // 购物车
     QList<OrderInfo>   m_orders;         // 订单历史
     QMap<QString, SalesItem> m_sales;    // key=productId, 商品销量累计
+    data_persist m_dataPersist;          // 文本文件持久化
 };
 
 #endif // MAINCONTROLLER_H

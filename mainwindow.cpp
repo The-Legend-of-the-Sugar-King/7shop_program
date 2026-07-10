@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "ui_mainwindow.h"
+#include <QAction>
 #include <QHeaderView>
+#include <QMenu>
 
 MainWindow::MainWindow(QWidget *parent) :
     QMainWindow(parent),
@@ -9,6 +11,7 @@ MainWindow::MainWindow(QWidget *parent) :
 {
     ui->setupUi(this);
     initTables();
+    connectUiSignals();
 
     // 订单明细表绑定 model
     m_ordersModel->setHorizontalHeaderLabels({"订单号", "时间", "件数", "金额", "状态"});
@@ -19,6 +22,93 @@ MainWindow::MainWindow(QWidget *parent) :
 MainWindow::~MainWindow()
 {
     delete ui;
+}
+
+// ============================================================
+//  前端信号连接：只读取界面输入并发出业务请求
+// ============================================================
+void MainWindow::connectUiSignals()
+{
+    connect(ui->pushButton, &QPushButton::clicked, this, [this]() {
+        emit searchByCodeRequested(ui->m_productCodeEdit->text().trimmed());
+    });
+
+    connect(ui->m_cashiersearchpushButton, &QPushButton::clicked, this, [this]() {
+        emit cashierSearchRequested(ui->m_cashierSearchEdit->text().trimmed());
+    });
+
+    connect(ui->pushButton_2, &QPushButton::clicked, this, [this]() {
+        emit addToCartRequested(ui->m_productCodeEdit->text().trimmed(),
+                                ui->m_quantitySpin->value());
+    });
+
+    connect(ui->m_cashierProductTable, &QTableWidget::customContextMenuRequested,
+            this, &MainWindow::showCashierProductMenu);
+
+    connect(ui->m_cartTable, &QTableWidget::customContextMenuRequested,
+            this, &MainWindow::showCartMenu);
+
+    connect(ui->pushButton_6, &QPushButton::clicked, this, [this]() {
+        emit checkoutRequested(ui->m_paidSpin->value());
+    });
+
+    connect(ui->pushButton_3, &QPushButton::clicked, this, [this]() {
+        emit searchProductByIdRequested(ui->m_idEdit->text().trimmed());
+    });
+
+    connect(ui->pushButton_4, &QPushButton::clicked, this, [this]() {
+        emit searchProductByNameRequested(ui->m_nameEdit->text().trimmed());
+    });
+
+    connect(ui->pushButton_5, &QPushButton::clicked, this, [this]() {
+        emit searchProductByCategoryRequested(ui->m_categoryEdit->text().trimmed());
+    });
+
+    connect(ui->m_roleCombo,
+            static_cast<void (QComboBox::*)(int)>(&QComboBox::currentIndexChanged),
+            this,
+            [this](int index) {
+                emit roleChangedRequested(index == 0);
+            });
+}
+
+void MainWindow::showCashierProductMenu(const QPoint &pos)
+{
+    QTableWidget *table = ui->m_cashierProductTable;
+    QTableWidgetItem *item = table->itemAt(pos);
+    if (!item) return;
+
+    int row = item->row();
+    QTableWidgetItem *codeItem = table->item(row, 0);
+    if (!codeItem) return;
+
+    QString code = codeItem->text();
+    int qty = ui->m_quantitySpin->value();
+
+    QMenu menu;
+    QAction *addAction = menu.addAction(QString("加入购物车（%1 件）").arg(qty));
+    QAction *chosen = menu.exec(table->viewport()->mapToGlobal(pos));
+
+    if (chosen == addAction) {
+        emit addToCartRequested(code, qty);
+    }
+}
+
+void MainWindow::showCartMenu(const QPoint &pos)
+{
+    QTableWidget *cart = ui->m_cartTable;
+    QTableWidgetItem *item = cart->itemAt(pos);
+    if (!item) return;
+
+    int row = item->row();
+
+    QMenu menu;
+    QAction *removeAction = menu.addAction("移出购物车");
+    QAction *chosen = menu.exec(cart->viewport()->mapToGlobal(pos));
+
+    if (chosen == removeAction) {
+        emit removeCartItemRequested(row);
+    }
 }
 
 // ============================================================

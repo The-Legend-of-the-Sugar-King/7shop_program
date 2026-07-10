@@ -1,6 +1,8 @@
 #include "mainwindow.h"
 #include "maincontroller.h"
+#include "logindialog.h"
 #include <QApplication>
+#include <QDialog>
 
 // ============================================================
 //  main.cpp —— 组装前端 + 控制器
@@ -13,6 +15,39 @@
 int main(int argc, char *argv[])
 {
     QApplication a(argc, argv);
+
+    LoginDialog loginDialog;
+
+    QObject::connect(&loginDialog, &LoginDialog::SIG_LoginCommit,
+                     &loginDialog,
+                     [&loginDialog](QString username, QString password)
+                     {
+                         Q_UNUSED(username)
+                         Q_UNUSED(password)
+                         loginDialog.accept();
+                     });
+
+    QObject::connect(&loginDialog, &LoginDialog::SIG_RegisterCommit,
+                     &loginDialog,
+                     [&loginDialog](QString username, QString tel, QString password)
+                     {
+                         Q_UNUSED(username)
+                         Q_UNUSED(tel)
+                         Q_UNUSED(password)
+                         loginDialog.showErrorTips("注册信息已提交，请返回登录", "success");
+                     });
+
+    QObject::connect(&loginDialog, &LoginDialog::SIG_CloseLoginDialog,
+                     &loginDialog,
+                     [&loginDialog]()
+                     {
+                         loginDialog.reject();
+                     });
+
+    if (loginDialog.exec() != QDialog::Accepted)
+    {
+        return 0;
+    }
 
     MainWindow w;
 

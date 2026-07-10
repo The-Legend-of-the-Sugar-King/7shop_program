@@ -1,6 +1,6 @@
 #ifndef MAINWINDOW_H
 #define MAINWINDOW_H
-
+#include "data_struct.h"
 #include <QMainWindow>
 #include <QTableWidgetItem>
 #include <QComboBox>
@@ -13,52 +13,22 @@
 #include <QPushButton>
 #include <QTextBrowser>
 #include <QStandardItemModel>
+#include <QPoint>
 
 // ============================================================
 //  轻量级数据结构 —— 前后端共用，不放任何业务逻辑
 // ============================================================
 
-struct ProductInfo {
-    QString id;
-    QString name;
-    QString category;
-    double  price = 0;
-    int     stock = 0;
-    QString condition;   // "上架" / "下架"
-};
 
-struct CartItem {
-    QString productId;
-    QString productName;
-    double  unitPrice = 0;
-    int     quantity  = 0;
-    double  subtotal  = 0;
-};
 
-struct OrderInfo {
-    QString orderId;
-    QString dateTime;
-    int     itemCount   = 0;
-    double  totalAmount = 0;
-    double  paidAmount  = 0;
-    double  changeAmount= 0;
-    QString status;       // "已完成" / "已挂起"
-};
-
-struct SalesItem {
-    QString productName;
-    QString productId;
-    int     soldCount      = 0;
-    int     remainingStock = 0;
-};
-
-namespace Ui {
+namespace Ui
+{
 class MainWindow;
 }
 
 // ============================================================
 //  MainWindow —— 纯前端
-//  职责：界面展示 + 控件 getter + 数据刷新入口
+//  职责：界面展示 + 控件 getter + 前端事件转发 + 数据刷新入口
 // ============================================================
 class MainWindow : public QMainWindow
 {
@@ -68,7 +38,7 @@ public:
     explicit MainWindow(QWidget *parent = 0);
     ~MainWindow();
 
-    // ====== 控件 getter —— 外部通过这些拿控件做 connect / 读写 ======
+    // ====== 控件 getter —— 外部通过这些拿控件做必要读写 ======
 
     // 顶部栏
     QComboBox  *roleCombo() const;
@@ -124,11 +94,30 @@ public:
     // ====== 权限控制 ======
     void setAdminMode(bool adminMode);
 
+signals:
+    // 收银台
+    void searchByCodeRequested(const QString &code);
+    void cashierSearchRequested(const QString &keyword);
+    void addToCartRequested(const QString &code, int quantity);
+    void removeCartItemRequested(int row);
+    void checkoutRequested(double paid);
+
+    // 商品管理
+    void searchProductByIdRequested(const QString &id);
+    void searchProductByNameRequested(const QString &name);
+    void searchProductByCategoryRequested(const QString &category);
+
+    // 权限
+    void roleChangedRequested(bool adminMode);
+
 private:
     Ui::MainWindow *ui;
     QStandardItemModel *m_ordersModel;   // 订单明细表 model
 
     void initTables();
+    void connectUiSignals();
+    void showCashierProductMenu(const QPoint &pos);
+    void showCartMenu(const QPoint &pos);
 };
 
 #endif // MAINWINDOW_H

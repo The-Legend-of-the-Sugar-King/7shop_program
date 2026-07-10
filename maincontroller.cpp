@@ -1,6 +1,6 @@
+#include "data_struct.h"
 #include "maincontroller.h"
 #include <QMessageBox>
-#include <QMenu>
 #include <QDateTime>
 
 MainController::MainController(MainWindow *view, QObject *parent)
@@ -8,43 +8,42 @@ MainController::MainController(MainWindow *view, QObject *parent)
     , m_view(view)
 {
     connectSignals();
-    loadDemoProducts();
 }
 
 MainController::~MainController()
 {
+
 }
 
 // ============================================================
 //  信号槽连接
 // ============================================================
+
 void MainController::connectSignals()
 {
     // ---- 收银台 ----
-    connect(m_view->searchByCodeButton(), &QPushButton::clicked,
+    connect(m_view, &MainWindow::searchByCodeRequested,
             this, &MainController::onSearchByCode);
-    connect(m_view->cashierSearchButton(), &QPushButton::clicked,
+    connect(m_view, &MainWindow::cashierSearchRequested,
             this, &MainController::onSearchProduct);
-    connect(m_view->addCartButton(), &QPushButton::clicked,
+    connect(m_view, &MainWindow::addToCartRequested,
             this, &MainController::onAddToCart);
-    connect(m_view->cashierProductTable(), &QTableWidget::customContextMenuRequested,
-            this, &MainController::onCashierProductRightClick);  // 右键加入购物车
-    connect(m_view->cartTable(), &QTableWidget::customContextMenuRequested,
-            this, &MainController::onRemoveFromCart);             // 右键移出购物车
-    connect(m_view->checkoutButton(), &QPushButton::clicked,
+    connect(m_view, &MainWindow::removeCartItemRequested,
+            this, &MainController::onRemoveFromCart);
+    connect(m_view, &MainWindow::checkoutRequested,
             this, &MainController::onCheckout);                   // ★ 收钱
 
     // ---- 商品管理 ----
-    connect(m_view->searchByIdButton(), &QPushButton::clicked,
+    connect(m_view, &MainWindow::searchProductByIdRequested,
             this, &MainController::onSearchProductById);
-    connect(m_view->searchByNameButton(), &QPushButton::clicked,
+    connect(m_view, &MainWindow::searchProductByNameRequested,
             this, &MainController::onSearchProductByName);
-    connect(m_view->searchByCategoryButton(), &QPushButton::clicked,
+    connect(m_view, &MainWindow::searchProductByCategoryRequested,
             this, &MainController::onSearchProductByCategory);
 
     // ---- 权限 ----
-    connect(m_view->roleCombo(), SIGNAL(currentIndexChanged(int)),
-            this, SLOT(onRoleChanged(int)));
+    connect(m_view, &MainWindow::roleChangedRequested,
+            this, &MainController::onRoleChanged);
 }
 
 // ============================================================
@@ -70,6 +69,23 @@ void MainController::loadDemoProducts()
 // ============================================================
 void MainController::init()
 {
+    QString error;
+    if(!m_dataPersist.loadAll(&m_products,&m_orders,&m_sales,&error))
+    {
+        QMessageBox::warning(m_view, "数据加载失败", error);
+        loadDemoProducts();
+    }
+
+    if(m_products.isEmpty())
+    {
+        loadDemoProducts();
+        QString saveError;
+        if(!m_dataPersist.saveAll(m_products,m_orders,m_sales,&saveError))
+        {
+            QMessageBox::warning(m_view, "初始数据保存失败", saveError);
+        }
+    }
+
     refreshCashierProducts(m_products);
     refreshProducts(m_products);
     refreshSalesDisplay();
@@ -78,15 +94,22 @@ void MainController::init()
 // ============================================================
 //  收银台：按编号搜索
 // ============================================================
-void MainController::onSearchByCode()
+void MainController::onSearchByCode(const QString &codeText)
 {
-    QString code = m_view->productCodeEdit()->text().trimmed();
+    QString code = codeText.trimmed();
     QList<ProductInfo> result;
-    if (code.isEmpty()) {
+    if (code.isEmpty())
+    {
         result = m_products;
-    } else {
-        for (const ProductInfo &p : m_products) {
-            if (p.id == code) { result.append(p); break; }
+    } else
+    {
+        for (int i=0;i<m_products.size();i++)
+        {
+            if (m_products[i].id == code)
+            {
+                result.append(m_products[i]);
+                break;
+            }
         }
     }
     refreshCashierProducts(result);
@@ -95,16 +118,19 @@ void MainController::onSearchByCode()
 // ============================================================
 //  收银台：按名称搜索
 // ============================================================
-void MainController::onSearchProduct()
+void MainController::onSearchProduct(const QString &Product_name)
 {
-    QString kw = m_view->cashierSearchEdit()->text().trimmed();
+    QString pn = Product_name.trimmed();
     QList<ProductInfo> result;
-    if (kw.isEmpty()) {
+    if (pn.isEmpty())
+    {
         result = m_products;
-    } else {
-        for (const ProductInfo &p : m_products) {
-            if (p.name.contains(kw, Qt::CaseInsensitive))
-                result.append(p);
+    } else
+    {
+        for (int i=0;i<m_products.size();i++)
+        {
+            if (m_products[i].name.contains(pn, Qt::CaseInsensitive))
+                result.push_back(m_products[i]);
         }
     }
     refreshCashierProducts(result);
@@ -113,36 +139,10 @@ void MainController::onSearchProduct()
 // ============================================================
 //  收银台：加入购物车（按钮触发）
 // ============================================================
-void MainController::onAddToCart()
+void MainController::onAddToCart(const QString &codeText, int qty)
 {
-    QString code = m_view->productCodeEdit()->text().trimmed();
-    int qty = m_view->quantitySpin()->value();
+    QString code = codeText.trimmed();
     addProductToCart(code, qty);
-}
-
-// ============================================================
-//  收银台：右键商品 → 加入购物车
-// ============================================================
-void MainController::onCashierProductRightClick(const QPoint &pos)
-{
-    QTableWidget *table = m_view->cashierProductTable();
-    QTableWidgetItem *item = table->itemAt(pos);
-    if (!item) return;
-
-    int row = item->row();
-    QTableWidgetItem *codeItem = table->item(row, 0);
-    if (!codeItem) return;
-
-    QString code = codeItem->text();
-    int qty = m_view->quantitySpin()->value();
-
-    QMenu menu;
-    QAction *addAction = menu.addAction(QString("加入购物车（%1 件）").arg(qty));
-    QAction *chosen = menu.exec(table->viewport()->mapToGlobal(pos));
-
-    if (chosen == addAction) {
-        addProductToCart(code, qty);
-    }
 }
 
 // ============================================================
@@ -150,41 +150,56 @@ void MainController::onCashierProductRightClick(const QPoint &pos)
 // ============================================================
 void MainController::addProductToCart(const QString &code, int qty)
 {
-    if (code.isEmpty()) {
+    if (code.isEmpty())
+    {
         QMessageBox::warning(m_view, "提示", "请先选择商品");
         return;
     }
-    if (qty <= 0) {
+    if (qty <= 0)
+    {
         QMessageBox::warning(m_view, "提示", "数量必须大于0");
         return;
     }
 
     // 查找商品
     ProductInfo *target = nullptr;
-    for (int i = 0; i < m_products.size(); ++i) {
-        if (m_products[i].id == code) { target = &m_products[i]; break; }
+    for (int i = 0; i < m_products.size(); i++)
+    {
+        if (m_products[i].id == code)
+        {
+            target = &m_products[i];
+            break;
+        }
     }
-    if (!target) {
+    if (target==nullptr)
+    {
         QMessageBox::warning(m_view, "提示", "未找到该商品");
         return;
     }
-    if (target->stock < qty) {
-        QMessageBox::warning(m_view, "库存不足",
-            QString("商品 \"%1\" 库存仅剩 %2 件").arg(target->name).arg(target->stock));
+    if (target->stock < qty)
+    {
+
+        QString s1=QString::number(target->stock);
+
+        QString message="商品"+target->name+"库存仅剩"+s1+"件";
+        QMessageBox::warning(m_view, "库存不足",message);
         return;
     }
 
     // 购物车已有则合并
     bool found = false;
-    for (int i = 0; i < m_cartItems.size(); ++i) {
-        if (m_cartItems[i].productId == target->id) {
+    for (int i = 0; i < m_cartItems.size(); i++)
+    {
+        if (m_cartItems[i].productId == target->id)
+        {
             m_cartItems[i].quantity += qty;
             m_cartItems[i].subtotal = m_cartItems[i].unitPrice * m_cartItems[i].quantity;
             found = true;
             break;
         }
     }
-    if (!found) {
+    if (!found)
+    {
         CartItem item;
         item.productId   = target->id;
         item.productName = target->name;
@@ -200,58 +215,49 @@ void MainController::addProductToCart(const QString &code, int qty)
 // ============================================================
 //  购物车：右键移出
 // ============================================================
-void MainController::onRemoveFromCart(const QPoint &pos)
+void MainController::onRemoveFromCart(int row)
 {
-    QTableWidget *cart = m_view->cartTable();
-    QTableWidgetItem *item = cart->itemAt(pos);
-    if (!item) return;
-
-    int row = item->row();
     if (row < 0 || row >= m_cartItems.size()) return;
 
-    QMenu menu;
-    QAction *removeAction = menu.addAction("移出购物车");
-    QAction *chosen = menu.exec(cart->viewport()->mapToGlobal(pos));
-
-    if (chosen == removeAction) {
-        m_cartItems.removeAt(row);
-        refreshCartDisplay();
-    }
+    m_cartItems.removeAt(row);
+    refreshCartDisplay();
 }
 
 // ============================================================
 //  ★ 收钱 —— 结算 + 同步销售统计表
 // ============================================================
-void MainController::onCheckout()
+void MainController::onCheckout(double paid)
 {
-    if (m_cartItems.isEmpty()) {
+    if (m_cartItems.isEmpty())
+    {
         QMessageBox::warning(m_view, "提示", "购物车为空，无法收款");
         return;
     }
 
-    double paid = m_view->paidSpin()->value();
-
     // 计算应收
     double total = 0;
     int totalQty = 0;
-    for (const CartItem &item : m_cartItems) {
+    for (const CartItem &item : m_cartItems)
+    {
         total    += item.subtotal;
         totalQty += item.quantity;
     }
 
-    if (paid < total) {
-        QMessageBox::warning(m_view, "金额不足",
-            QString("应收 %1 元，实收 %2 元，还差 %3 元")
-                .arg(total, 0, 'f', 2)
-                .arg(paid, 0, 'f', 2)
-                .arg(total - paid, 0, 'f', 2));
+    if (paid < total)
+    {
+        QString s1,s2,s3,message;
+        s1=QString::number(total);
+        s2=QString::number(paid);
+        s3=QString::number(total - paid);
+        message="应收"+s1+"元，实收 "+s2+"元，还差 "+s3+" 元";
+        QMessageBox::warning(m_view, "金额不足",message);
         return;
     }
 
     // ---- 1. 创建订单 ----
     OrderInfo order;
-    order.orderId    = QString("ORD%1").arg(
-        QDateTime::currentDateTime().toString("yyyyMMddhhmmss"));
+     QString res="ORD"+QDateTime::currentDateTime().toString("yyyyMMddhhmmss");
+    order.orderId    = res;
     order.dateTime   = QDateTime::currentDateTime().toString("yyyy-MM-dd hh:mm:ss");
     order.itemCount  = totalQty;
     order.totalAmount= total;
@@ -259,39 +265,54 @@ void MainController::onCheckout()
     order.changeAmount = paid - total;
     order.status     = "已完成";
 
-    m_orders.prepend(order);   // 最新的排最前
+   m_orders.push_front(order);   // 最新的排最前
 
     // ---- 2. 扣库存 + 累计销量 ----
-    for (const CartItem &ci : m_cartItems) {
+    for (int i=0;i<m_cartItems.size();i++)
+   {
         // 扣库存
-        for (int i = 0; i < m_products.size(); ++i) {
-            if (m_products[i].id == ci.productId) {
-                m_products[i].stock -= ci.quantity;
+        for (int j = 0; j < m_products.size(); j++)
+        {
+            if (m_products[j].id == m_cartItems[i].productId)
+            {
+                m_products[j].stock -=m_cartItems[i].quantity;
                 break;
             }
         }
 
         // 累计销售统计
-        if (m_sales.contains(ci.productId)) {
-            m_sales[ci.productId].soldCount += ci.quantity;
-        } else {
+        if (m_sales.contains(m_cartItems[i].productId))
+        {
+            m_sales[m_cartItems[i].productId].soldCount +=m_cartItems[i].quantity;
+        }
+        else
+        {
             SalesItem si;
-            si.productId   = ci.productId;
-            si.productName = ci.productName;
-            si.soldCount   = ci.quantity;
+            si.productId   = m_cartItems[i].productId;
+            si.productName = m_cartItems[i].productName;
+            si.soldCount   = m_cartItems[i].quantity;
             si.remainingStock = 0;   // 下面更新
-            m_sales[ci.productId] = si;
+            m_sales[m_cartItems[i].productId] = si;
         }
     }
 
     // 更新销量中的剩余库存
-    for (auto it = m_sales.begin(); it != m_sales.end(); ++it) {
-        for (const ProductInfo &p : m_products) {
-            if (p.id == it.key()) {
-                it->remainingStock = p.stock;
+    for (auto it = m_sales.begin(); it != m_sales.end(); it++)
+    {
+        for (int i = 0; i < m_products.size(); i++)
+        {
+            if (m_products[i].id == it.key())
+            {
+                it->remainingStock = m_products[i].stock;
                 break;
             }
         }
+    }
+
+    QString saveError;
+    if(!m_dataPersist.saveAll(m_products,m_orders,m_sales,&saveError))
+    {
+        QMessageBox::warning(m_view, "数据保存失败", saveError);
     }
 
     // ---- 3. 刷新所有显示 ----
@@ -305,31 +326,36 @@ void MainController::onCheckout()
     m_view->paidSpin()->setValue(0);
 
     // ---- 5. 提示 ----
-    QMessageBox::information(m_view, "收款成功",
-        QString("订单号: %1\n"
-                "件数: %2\n"
-                "应收: %3 元\n"
-                "实收: %4 元\n"
-                "找零: %5 元")
-            .arg(order.orderId)
-            .arg(order.itemCount)
-            .arg(order.totalAmount, 0, 'f', 2)
-            .arg(order.paidAmount, 0, 'f', 2)
-            .arg(order.changeAmount, 0, 'f', 2));
+    QString message;
+    message += "订单号: " + order.orderId + "\n";
+    message += "件数: " + QString::number(order.itemCount) + "\n";
+    message += "应收: " + QString::number(order.totalAmount, 'f', 2) + " 元\n";
+    message += "实收: " + QString::number(order.paidAmount, 'f', 2) + " 元\n";
+    message += "找零: " + QString::number(order.changeAmount, 'f', 2) + " 元";
+
+    QMessageBox::information(m_view, "收款成功", message);
 }
 
 // ============================================================
 //  商品管理：按编号搜索
 // ============================================================
-void MainController::onSearchProductById()
+void MainController::onSearchProductById(const QString &idText)
 {
-    QString id = m_view->idEdit()->text().trimmed();
+    QString id = idText.trimmed();
     QList<ProductInfo> result;
-    if (id.isEmpty()) {
+    if (id.isEmpty())
+    {
         result = m_products;
-    } else {
-        for (const ProductInfo &p : m_products) {
-            if (p.id == id) { result.append(p); break; }
+    }
+    else
+    {
+        for (int i = 0; i < m_products.size(); i++)
+        {
+            if (m_products[i].id == id)
+            {
+                result.append(m_products[i]);
+                break;
+            }
         }
     }
     refreshProducts(result);
@@ -338,16 +364,22 @@ void MainController::onSearchProductById()
 // ============================================================
 //  商品管理：按名称搜索
 // ============================================================
-void MainController::onSearchProductByName()
+void MainController::onSearchProductByName(const QString &nameText)
 {
-    QString name = m_view->nameEdit()->text().trimmed();
+    QString name = nameText.trimmed();
     QList<ProductInfo> result;
-    if (name.isEmpty()) {
+    if (name.isEmpty())
+    {
         result = m_products;
-    } else {
-        for (const ProductInfo &p : m_products) {
-            if (p.name.contains(name, Qt::CaseInsensitive))
-                result.append(p);
+    }
+    else
+    {
+        for (int i = 0; i < m_products.size(); i++)
+        {
+            if (m_products[i].name.contains(name, Qt::CaseInsensitive))
+            {
+                result.push_back(m_products[i]);
+            }
         }
     }
     refreshProducts(result);
@@ -356,16 +388,20 @@ void MainController::onSearchProductByName()
 // ============================================================
 //  商品管理：按类别搜索
 // ============================================================
-void MainController::onSearchProductByCategory()
+void MainController::onSearchProductByCategory(const QString &categoryText)
 {
-    QString cat = m_view->categoryEdit()->text().trimmed();
+    QString cat = categoryText.trimmed();
     QList<ProductInfo> result;
-    if (cat.isEmpty()) {
+    if (cat.isEmpty())
+    {
         result = m_products;
-    } else {
-        for (const ProductInfo &p : m_products) {
-            if (p.category.contains(cat, Qt::CaseInsensitive))
-                result.append(p);
+    }
+    else
+    {
+        for (int i = 0; i < m_products.size(); i++)
+        {
+            if (m_products[i].category.contains(cat, Qt::CaseInsensitive))//忽略大小写
+                result.push_back(m_products[i]);
         }
     }
     refreshProducts(result);
@@ -374,10 +410,9 @@ void MainController::onSearchProductByCategory()
 // ============================================================
 //  权限切换
 // ============================================================
-void MainController::onRoleChanged(int index)
+void MainController::onRoleChanged(bool adminMode)//待完成
 {
-    bool isAdmin = (index == 0);
-    m_view->setAdminMode(isAdmin);
+    m_view->setAdminMode(adminMode);
 }
 
 // ============================================================
@@ -398,9 +433,10 @@ void MainController::refreshCartDisplay()
     m_view->updateCartTable(m_cartItems);
     int count = 0;
     double total = 0;
-    for (const CartItem &item : m_cartItems) {
-        count += item.quantity;
-        total += item.subtotal;
+    for (int i = 0; i < m_cartItems.size(); i++)
+    {
+        count += m_cartItems[i].quantity;
+        total += m_cartItems[i].subtotal;
     }
     m_view->updateCartSummary(count, total);
 }
@@ -412,13 +448,21 @@ void MainController::refreshSalesDisplay()
 
     // 商品销量 —— 显示所有商品（未售出的显示 0）
     QList<SalesItem> salesList;
-    for (const ProductInfo &p : m_products) {
+    for (int i = 0; i < m_products.size(); i++)
+    {
         SalesItem si;
-        si.productId      = p.id;
-        si.productName    = p.name;
-        si.remainingStock = p.stock;
-        si.soldCount      = m_sales.contains(p.id) ? m_sales[p.id].soldCount : 0;
-        salesList.append(si);
+        si.productId      = m_products[i].id;
+        si.productName    = m_products[i].name;
+        si.remainingStock = m_products[i].stock;
+        if (m_sales.contains(m_products[i].id))
+        {
+            si.soldCount = m_sales[m_products[i].id].soldCount;
+        }
+        else
+        {
+            si.soldCount = 0;
+        }
+        salesList.push_back(si);
     }
     m_view->updateSalesTable(salesList);
 }

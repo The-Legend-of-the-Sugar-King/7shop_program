@@ -1,1 +1,0 @@
-# 7shop_program
